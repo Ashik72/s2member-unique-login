@@ -1,0 +1,290 @@
+<?php
+
+if(!defined('WPINC')) // MUST have WordPress.
+	exit('Do NOT access this file directly: '.basename(__FILE__));
+
+/**
+ * Coupon and Credit
+ */
+class s2UL_Coupon_Credit
+{
+
+  private static $instance;
+
+  public static function get_instance() {
+  	if ( ! isset( self::$instance ) ) {
+  		self::$instance = new self();
+  	}
+
+  	return self::$instance;
+  }
+
+
+    function __construct()  {
+
+      add_action( 'init', array($this, 'add_user_coupon') );
+      //add_action( 'wp_footer', array($this, 'footer_data') );
+      add_filter('c_ws_plugin__s2member_pro_sc_gift_codes_content', [$this, 'mod_c_ws_plugin__s2member_pro_sc_gift_codes_content'], 10, 2);
+
+			add_action( 'template_redirect', array($this, 'update_user_eot_time') );
+
+    }
+
+    public function mod_c_ws_plugin__s2member_pro_sc_gift_codes_content($content, $vars) {
+      $get_users = get_users([ 'fields' => 'ID' ]);
+      $refined_uid_coupons = [];
+      $search = 0;
+
+      ob_start();
+
+
+      foreach ($get_users as $key => $uid) {
+
+        $uid = (int) $uid;
+
+        $get_meta = get_user_meta($uid, 'coupon_used', true);
+
+        if (empty($get_meta))
+          continue;
+
+          $search = preg_grep("/".$get_meta."/", explode("\n", $content));
+
+          if (!empty($search)) {
+
+            $refined_uid_coupons[$key]['user_id'] = $uid;
+            $refined_uid_coupons[$key]['coupon_used'] = $get_meta;
+
+          }
+
+      }
+
+      ?>
+
+      <table class="ws-plugin--s2member-gift-codes table table-condensed table-striped table-hover">
+    <thead>
+    <tr><th class="-code">User</th><th class="-status">Coupon Used</th>
+				<th class="-status">EOT</th><th class="-status">Add Extra Time</th>
+		</tr>
+    </thead>
+    <tbody>
+
+      <?php
+      foreach ($refined_uid_coupons as $key => $single_refined_uid_coupons) {
+
+
+        $user_info = get_userdata($single_refined_uid_coupons['user_id']);
+
+
+
+      ?>
+
+    <tr class="-status-unused"><td class="-code"><?php
+
+    _e($user_info->user_login ." | "."(User ID: ".$single_refined_uid_coupons['user_id'].")" );
+
+    ?></td>
+
+      <td class="-status"><?php _e($single_refined_uid_coupons['coupon_used']); ?></td>
+
+<td class="-status"><?php _e( empty(!get_user_option('s2member_auto_eot_time', $single_refined_uid_coupons['user_id'])) ? date("F j, Y, g:i a", get_user_option('s2member_auto_eot_time', $single_refined_uid_coupons['user_id'])) : "" ); ?></td>
+<td class="-status">
+
+
+	<form method="post" class='eot_form'>
+
+		<?php
+
+		if (s2Member_check_login::read_option('user_define_eot'))
+			echo 'Extra Time (in days): <input type="text" name="eot_time_days">';
+
+		 ?>
+
+
+	<input type="hidden" name="user_id" value="<?php _e($single_refined_uid_coupons['user_id']); ?>">
+	<input type="submit" name="add_eot" value="Add">
+
+	<style type="text/css" scoped>
+			.eot_form input {
+			margin-bottom: 0.5rem;
+			}
+	</style>
+
+	</form>
+
+
+
+</td>
+		</tr>
+      <?php
+      }
+      ?>
+      <tbody>
+      </table>
+
+
+      <?php
+
+			//d(class_exists('c_ws_plugin__s2member_pro_coupons'));
+
+			$c_ws_plugin__s2member_pro_coupons_ob = new c_ws_plugin__s2member_pro_coupons();
+			$gift_opt_key = $c_ws_plugin__s2member_pro_coupons_ob->gift_option_key('GC00K24JF7OLUGIR43425E');
+			// d(get_option($gift_opt_key));
+			//
+			// $user_meta = get_user_meta(23);
+			// d($user_meta);
+			// d(get_user_option('s2member_auto_eot_time', 23));
+			// d($c_ws_plugin__s2member_pro_coupons_ob->valid_coupon("GC0K38KEQFOLUGIR4XHWYA", ""));
+			// d(get_the_ID());
+			// $user_meta = get_user_meta(get_current_user_id(), 'wp_s2m_gcs_40_0cb6d3d3cfdb4a6dad9257463ef57db1');
+			// d($user_meta);
+
+      $content_extra = ob_get_clean();
+
+      return $content.$content_extra;
+    }
+
+		public function update_user_eot_time() {
+
+			if (empty($_POST['user_id']))
+				return;
+
+			$user_id = $_POST['user_id'];
+
+			$user_meta = get_user_meta($user_id);
+
+			$one_time_increase = s2Member_check_login::read_option('one_time_increase');
+
+			if ($one_time_increase) {
+
+				$one_time_increase_stat = get_user_meta($user_id, 'one_time_increase_stat', true);
+
+				if (!empty($one_time_increase_stat))
+					return;
+			}
+
+
+			if (empty($user_meta['coupon_used']))
+				return;
+
+			if (empty($user_meta['coupon_used'][0]))
+				return;
+
+			$coupon_used = $user_meta['coupon_used'][0];
+
+			$current_user_meta = get_user_meta(get_current_user_id());
+			$current_page_id = get_the_ID();
+			$the_coupons_arr = [];
+			$string_to_search = "wp_s2m_gcs_".$current_page_id;
+			$output_array = [];
+
+			foreach ($current_user_meta as $key => $current_user_meta_single) {
+				preg_match("/{$string_to_search}/", $key, $output_array);
+
+				if (empty($output_array))
+					continue;
+
+				$the_coupons_arr = $current_user_meta_single;
+				break;
+
+			}
+
+			$the_coupons_arr = ( (count($the_coupons_arr) == 1) ? $the_coupons_arr[0] : $the_coupons_arr );
+
+			$the_coupons_arr = maybe_unserialize($the_coupons_arr);
+
+			if (!array_key_exists($coupon_used, $the_coupons_arr))
+				return;
+
+				global $wpdb;
+
+				// d($user_meta);
+				// d($wpdb->prefix);
+
+				if (s2Member_check_login::read_option('user_define_eot')) {
+
+					$max_eot = s2Member_check_login::read_option('max_eot_time_define');
+					$max_eot = time() + $max_eot * 86400;
+
+					$post_eot = (int) $_POST['eot_time_days'];
+					$post_eot = time() + $post_eot * 86400;
+
+					if ($post_eot > $max_eot)
+						$post_eot = $post_eot - ($post_eot-$max_eot);
+
+					update_user_option( $user_id, 's2member_auto_eot_time', $post_eot);
+
+					$one_time_increase = s2Member_check_login::read_option('one_time_increase');
+					$one_time_increase_stat = get_user_meta($user_id, 'one_time_increase_stat', true);
+
+					if ($one_time_increase)
+						update_user_meta($user_id, 'one_time_increase_stat', 1);
+
+					return;
+				}
+
+				$max_eot = s2Member_check_login::read_option('max_eot_time_define');
+				$max_eot_time = $max_eot * 86400;
+
+				$max_eot = time() + $max_eot * 86400;
+
+				$s2member_last_payment_time = $user_meta[$wpdb->prefix.'s2member_last_payment_time'][0];
+				$s2member_eot_time = get_user_option('s2member_auto_eot_time', $user_id);
+
+				if (empty($s2member_eot_time))
+					$new_time = $max_eot;
+				else
+					$new_time = $s2member_eot_time + $max_eot_time;
+
+				update_user_option( $user_id, 's2member_auto_eot_time', $new_time);
+
+				if ($one_time_increase)
+					update_user_meta($user_id, 'one_time_increase_stat', 1);
+
+				return;
+		}
+
+
+    public function footer_data() {
+
+      d(get_user_meta(15));
+      d(has_filter('c_ws_plugin__s2member_pro_sc_gift_codes_content'));
+
+      if (empty($_GET['data_show']))
+        return;
+
+        $_GET['data_show'] = 'a:13:{i:0;s:1:"1";i:1;s:1:"8";i:2;s:2:"10";i:3;s:1:"9";i:4;s:2:"11";i:5;s:2:"13";i:6;s:2:"12";i:7;s:1:"6";i:8;s:1:"2";i:9;s:1:"3";i:10;s:1:"4";i:11;s:1:"7";i:12;s:1:"5";}';
+      d($_GET['data_show']);
+      d(maybe_unserialize($_GET['data_show']));
+
+    }
+
+    public function add_user_coupon() {
+
+      if (empty($_GET['coupon_notifier']))
+        return;
+
+        $get_users = get_users([ 'fields' => 'ID' ]);
+        $found_uid = 0;
+
+        foreach ($get_users as $key => $uid) {
+
+          $uid = (int) $uid;
+
+          $get_meta = get_user_meta($uid, 'wp_s2member_subscr_id', true);
+
+          if ($get_meta == $_GET['sid']) {
+
+              update_user_meta( $uid, 'coupon_used', $_GET['coupon'] );
+              $found_uid = $uid;
+              break;
+          }
+
+        }
+
+
+    }
+
+}
+
+
+?>
