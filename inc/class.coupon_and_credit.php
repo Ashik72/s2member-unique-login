@@ -58,7 +58,9 @@ class s2UL_Coupon_Credit
 
       }
 
+
       ?>
+
 
       <table class="ws-plugin--s2member-gift-codes table table-condensed table-striped table-hover">
     <thead>
@@ -100,7 +102,33 @@ class s2UL_Coupon_Credit
 		 ?>
 
 
-	<input type="hidden" name="user_id" value="<?php _e($single_refined_uid_coupons['user_id']); ?>">
+	<input type="hidden" name="user_id" value="<?php _e($single_refined_uid_coupons['user_id']); ?>"><br>
+
+	<span>Use Coupon : </span><select name="use_coupon">
+
+	<?php
+
+	$coupons_arr = self::coupons_array();
+
+	if (empty($coupons_arr))
+		return;
+
+	if (!is_array($coupons_arr))
+		return;
+
+		foreach ($coupons_arr as $key => $coupon_single) {
+			if (!isset($coupon_single['code']))
+				continue;
+
+			if (empty($coupon_single['code']))
+				continue;
+
+				_e('<option value="'.$coupon_single['code'].'">'.$coupon_single['code'].'</option>');
+
+		}
+
+	 ?>
+	</select><br>
 	<input type="submit" name="add_eot" value="Add">
 
 	<style type="text/css" scoped>
@@ -145,8 +173,14 @@ class s2UL_Coupon_Credit
 
 		public function update_user_eot_time() {
 
+
 			if (empty($_POST['user_id']))
 				return;
+
+			if (empty($_POST['use_coupon']))
+				return;
+
+			$use_coupon = $_POST['use_coupon'];
 
 			$user_id = $_POST['user_id'];
 
@@ -219,6 +253,8 @@ class s2UL_Coupon_Credit
 					if ($one_time_increase)
 						update_user_meta($user_id, 'one_time_increase_stat', 1);
 
+						self::s2_user_apply_coupon($user_id, $use_coupon);
+
 					return;
 				}
 
@@ -240,14 +276,92 @@ class s2UL_Coupon_Credit
 				if ($one_time_increase)
 					update_user_meta($user_id, 'one_time_increase_stat', 1);
 
+				self::s2_user_apply_coupon($user_id, $use_coupon);
+
 				return;
+		}
+
+		public static function s2_user_apply_coupon($user_id = "", $coupon = "", $level = "") {
+
+			if (empty($user_id))
+				return;
+
+			if (empty($coupon))
+				return;
+
+			if(!class_exists('c_ws_plugin__s2member_pro_coupons'))
+				return;
+
+				$coupon_class = new c_ws_plugin__s2member_pro_coupons();
+
+				$isValid = $coupon_class->valid_coupon($coupon, []);
+
+
+				if (empty($isValid))
+					return;
+
+				$coupon_class->update_uses($coupon, $user_id);
+				update_user_meta($user_id, "coupon_used", $coupon);
+					//wp_s2member_paid_registration_times
+					if (!empty($level)) {
+						$update_user = wp_update_user(wp_slash(['ID' => $user_id, 'role' => 's2member_'.$level]));
+						return;
+					}
+
+					$wp_s2member_paid_registration_times = get_user_meta($user_id, 'wp_s2member_paid_registration_times', true);
+
+					if (empty($wp_s2member_paid_registration_times) || !is_array($wp_s2member_paid_registration_times))
+						return;
+
+						$level = "";
+
+						foreach ($wp_s2member_paid_registration_times as $level_key => $value) {
+							$level = $level_key;
+						}
+
+						if (empty($level))
+							return;
+
+						$isLevel = "";
+
+						preg_match("/level/", $level, $isLevel);
+
+						if (empty($isLevel))
+							return;
+
+							$update_user = wp_update_user(wp_slash(['ID' => $user_id, 'role' => 's2member_'.$level]));
+
+							return;
 		}
 
 
     public function footer_data() {
 
-      d(get_user_meta(15));
-      d(has_filter('c_ws_plugin__s2member_pro_sc_gift_codes_content'));
+			//self::s2_user_apply_coupon(9, "GC0K5U3VQ1OLUGIR48K4VV", "level3");
+			//self::s2_user_apply_coupon(20, "GC0K5U3VQ1OLUGIR48K4VV");
+			//d(get_user_meta(20));
+
+			//self::s2_user_apply_coupon(9, "GC0K1CT226OLUGIR3WZFA2");
+			// d(get_user_meta(20));
+			// update_user_meta(9, "coupon_used", "GC0KAFIL3LOLUGIR46H6HJ");
+			return;
+
+			d(get_user_meta(9));
+
+			//wp_update_user(wp_slash(['ID' => 9, 'role' => 's2member_level2'])); // OK. Now send this array for an update.
+
+			d(get_user_meta(9));
+
+			d(get_user_meta(10));
+
+			d(get_user_meta(8));
+
+
+			$ccap_times = get_user_meta(8, 'wp_s2member_paid_registration_times', true);
+
+			d($ccap_times);
+
+      //d(has_filter('c_ws_plugin__s2member_pro_sc_gift_codes_content'));
 
       if (empty($_GET['data_show']))
         return;
@@ -283,6 +397,51 @@ class s2UL_Coupon_Credit
 
 
     }
+
+
+		private static function coupons_array() {
+
+			$current_user_meta = get_user_meta(get_current_user_id());
+			$current_page_id = get_the_ID();
+			$the_coupons_arr = [];
+			$string_to_search = "wp_s2m_gcs_".$current_page_id;
+			$output_array = [];
+
+			foreach ($current_user_meta as $key => $current_user_meta_single) {
+				preg_match("/{$string_to_search}/", $key, $output_array);
+
+				if (empty($output_array))
+					continue;
+
+				$the_coupons_arr = $current_user_meta_single;
+				break;
+
+			}
+
+			$the_coupons_arr = ( (count($the_coupons_arr) == 1) ? $the_coupons_arr[0] : $the_coupons_arr );
+
+			$the_coupons_arr = maybe_unserialize($the_coupons_arr);
+
+			if(!class_exists('c_ws_plugin__s2member_pro_coupons'))
+				return;
+
+				$coupon_class = new c_ws_plugin__s2member_pro_coupons();
+
+				$filtered_coupons = [];
+				$isValid = [];
+				foreach ($the_coupons_arr as $key => $coupon_data) {
+
+					$isValid = $coupon_class->valid_coupon($coupon_data['code'], []);
+
+					if (empty($isValid))
+						continue;
+
+					$filtered_coupons[] = $coupon_data;
+				}
+
+			return $filtered_coupons;
+
+		}
 
 }
 
